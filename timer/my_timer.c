@@ -22,16 +22,17 @@ static struct timespec t1; //current time
 static ssize_t procfile_read(struct file* file, char * ubuf, size_t count, loff_t *ppos)
 {
   printk(KERN_INFO "proc_read\n");	
-  char current_t [100]= "Current time: ";
+  char current_t [1000]= "Current time: ";
 
   printk(KERN_INFO "Prompt %s\n", current_t);
   t1 = current_kernel_time();
 
   char time[21];
-  sprintf(time, "%lld", (long long) t1.tv_sec);
+  sprintf(time, "%ld.%ld", (long long) t1.tv_sec, (long long)t1.tv_nsec);
 
   //append time   
   strcat(current_t, time);
+  strcat(current_t, "\n");
   procfs_buf_len = strlen(current_t);
   if (*ppos > 0 || count < procfs_buf_len)
     return 0;
@@ -49,19 +50,30 @@ static ssize_t procfile_read(struct file* file, char * ubuf, size_t count, loff_
 static ssize_t procfile_write(struct file* file, const char * ubuf, size_t count, loff_t* ppos)
 {
 
-/*  printk(KERN_INFO "proc_write\n");
+  printk(KERN_INFO "proc_write\n");
 
+  //store current time
+/*  t0 = t1;
+  char elapsed_t [100] = "Elapsed time: ";
+  
+  char time[21];
+  sprintf(time, "%ld\n", (long long) t0.tv_sec);
+    //append time   
+  strcat(elapsed_t, time);
+  procfs_buf_len = strlen(elapsed_t);
+*/
+  
   if (count > BUF_LEN)
     procfs_buf_len = BUF_LEN;
   else
     procfs_buf_len = count;
 
-    copy_from_user(msg, ubuf, procfs_buf_len);
+  copy_from_user(msg, ubuf, procfs_buf_len);
 
-    printk(KERN_INFO "got from user: %s\n", msg);
+  printk(KERN_INFO "got from user: %s\n", msg);
 
-    return procfs_buf_len;
-*/
+  return procfs_buf_len;
+
 }
 
 static struct file_operations procfile_fops = {
