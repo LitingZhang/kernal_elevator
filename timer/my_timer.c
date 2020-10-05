@@ -17,32 +17,75 @@ static char msg[BUF_LEN];
 static char procfs_buf_len;
 static struct timespec t0; //previous time
 static struct timespec t1; //current time
+static struct timespec diff;
 
 //struct timeval diff = {a.tv_sec-b.tv_sec, a.tv_usec-b.tv_usec};
 static ssize_t procfile_read(struct file* file, char * ubuf, size_t count, loff_t *ppos)
 {
   printk(KERN_INFO "proc_read\n");	
-  char current_t [1000]= "Current time: ";
 
-  printk(KERN_INFO "Prompt %s\n", current_t);
-  t1 = current_kernel_time();
+  if(t0.tv_nsec > 0)
+  {
+    t1 = current_kernel_time();
+    char current_t[200] = "current time: ";
+    char time_1[21];
+    sprintf(time_1, "%ld.%ld", (long long) t1.tv_sec, (long long)t1.tv_nsec);
+    strcat(current_t, time_1);
+    strcat(current_t, "\n");
 
-  char time[21];
-  sprintf(time, "%ld.%ld", (long long) t1.tv_sec, (long long)t1.tv_nsec);
+    if(t1.tv_nsec < t0.tv_nsec)
+    {
+        diff.tv_sec = t1.tv_sec - t0.tv_sec - 1;
+	diff.tv_nsec = 1000000000 + t1.tv_nsec - t0.tv_nsec;
 
-  //append time   
-  strcat(current_t, time);
-  strcat(current_t, "\n");
-  procfs_buf_len = strlen(current_t);
-  if (*ppos > 0 || count < procfs_buf_len)
-    return 0;
-  if (copy_to_user(ubuf, current_t, procfs_buf_len))
-    return -EFAULT;
+    }    
+    else
+    {
+        diff.tv_sec = t1.tv_sec - t0.tv_sec;
+        diff.tv_nsec =  t1.tv_nsec - t0.tv_nsec;
+    }
+
+    printk(KERN_INFO "time difference is %ld.%ld\n", diff.tv_sec, diff.tv_nsec);
+    char elapsed_t [100] = "elapsed time: ";
+    char time_0[21];
+    sprintf(time_0, "%ld.%ld", diff.tv_sec, diff.tv_nsec);
+    strcat(elapsed_t, time_0);
+    strcat(elapsed_t, "\n");
+
+    strcat(current_t, elapsed_t);    
+    procfs_buf_len = strlen(current_t);
+    if (*ppos > 0 || count < procfs_buf_len)
+      return 0;
+    if (copy_to_user(ubuf, current_t, procfs_buf_len))
+      return -EFAULT;
+
+    t0 = t1;
+  }
+  else
+  {
+    char current_t [1000]= "current time: ";
+    t1 = current_kernel_time();
+
+    char time_1[21];
+    sprintf(time_1, "%ld.%ld", (long long) t1.tv_sec, (long long)t1.tv_nsec);
+
+    //append time   
+    strcat(current_t, time_1);
+    strcat(current_t, "\n");
+
+    procfs_buf_len = strlen(current_t);
+    if (*ppos > 0 || count < procfs_buf_len)
+      return 0;
+    if (copy_to_user(ubuf, current_t, procfs_buf_len))
+      return -EFAULT;
+
+    t0 = t1;
+    printk(KERN_INFO "set previous time %ld.%ld\n", (long long) t0.tv_sec, (long long) t0.tv_nsec);
+
+  }
+
 
   *ppos = procfs_buf_len;
-  printk(KERN_INFO "time is  %s\n", time);
-  printk(KERN_INFO "gave to user %s\n", current_t);
-  
   return procfs_buf_len;
 }
 
@@ -51,17 +94,6 @@ static ssize_t procfile_write(struct file* file, const char * ubuf, size_t count
 {
 
   printk(KERN_INFO "proc_write\n");
-
-  //store current time
-/*  t0 = t1;
-  char elapsed_t [100] = "Elapsed time: ";
-  
-  char time[21];
-  sprintf(time, "%ld\n", (long long) t0.tv_sec);
-    //append time   
-  strcat(elapsed_t, time);
-  procfs_buf_len = strlen(elapsed_t);
-*/
   
   if (count > BUF_LEN)
     procfs_buf_len = BUF_LEN;
