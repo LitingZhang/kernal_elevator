@@ -16,7 +16,7 @@
 #include <linux/sched.h>
 
 MODULE_AUTHOR("Liting V. Zhang");
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("This is an elevator simulation");
 
 #define ENTRY_NAME "elevator"
@@ -91,12 +91,6 @@ int load_elevator(void);
 int unload_elevator(void);
 int move_elevator(void);
 int scheduler (void *data);
-/*
-int elevator_proc_open(struct inode *sp_inode, struct file *sp_file);
-ssize_t elevator_proc_read(struct file *sp_file, char __user *buf, size_t size, loff_t *offset);
-int elevator_proc_release(struct inode *sp_inode, struct file *sp_file);
-static int elevator_init(void);
-static void elevator_exit(void);*/
 
 /**************************SYSTEM CALL DEFINITION********************************/
 extern int (*STUB_start_elevator)(void);
@@ -143,9 +137,12 @@ int issue_request(int start_floor, int destination_floor, int type)
   {
     if(mutex_lock_interruptible(&thread1.mutex) == 0)
     {
+        printk(KERN_INFO "GAINED LOCK");
         add_passenger(type, start_floor, destination_floor);
+        printk(KERN_INFO "ADDED PASSENGER\n");
     }
     mutex_unlock(&thread1.mutex);
+    printk(KERN_INFO "DONE REQUEST & RELEASE LOCK\n");
     return 0;
   }
 }
@@ -243,19 +240,21 @@ int remove_passenger(void)
 
 
     printk(KERN_INFO "REMOVE PASSENGERS");
-
-    list_for_each_safe(temp, dummy, &delete_list)
+    if(mutex_lock_intteruptible(&thread1.mutex) == 0)
     {
-        p = list_entry(temp, Passenger, list);
-        list_del(temp);
-        kfree(p);
+        list_for_each_safe(temp, dummy, &delete_list)
+        {
+            p = list_entry(temp, Passenger, list);
+            list_del(temp);
+            kfree(p);
+        }
+        int i;
+        for (i = 0; i < NUM_FLOORS; i++)
+        {
+        waiting[i] = 0;
+        }
     }
-    int i;
-    for (i = 0; i < NUM_FLOORS; i++)
-    {
-      waiting[i] = 0;
-    }
-    
+    mutex_unlock(&thread1.mutex);
     printk(KERN_INFO "REMOVED ALL PASSSENGERS");
     return 0;
 }
@@ -320,6 +319,7 @@ int load_elevator()
     }
   }
   mutex_unlock(&thread1.mutex);
+  printk(KERN_INFO "DONE LOADING AND RELEASE LOCK\n");
   return 0;
   
 }
@@ -399,8 +399,7 @@ int scheduler(void *data)
     //if there are waiting passengers or passengers onboard. 
     if(num_wait != 0 || elevator.load != 0)
     {
-      if(mutex_lock_interruptible(&thread1.mutex) == 0)
-      {
+
         int unload_pause = unload_elevator();
         int load_pause = -1;
         if(elevator.load != CAPACITY)
@@ -423,17 +422,19 @@ int scheduler(void *data)
           elevator.state = OFFLINE;
           elevator.deactiving = 0;
         }
-      }
-      mutex_unlock(&thread1.mutex);
+      
+  
 
     }
     else if(started)
     {
       elevator.state = IDLE;
+      ssleep(1);
     }
     else
     {
       elevator.state = OFFLINE;
+      ssleep(1);
     }
     
 
@@ -450,18 +451,10 @@ static int elevator_proc_open(struct inode *sp_inode, struct file *sp_file)
 
   if(message == NULL)
   {
-    printk(KERN_WARNING "elevatro open\n");
+    printk(KERN_WARNING "Elevator open\n");
   }
-  return 0;
-}
 
-static ssize_t elevator_proc_read(struct file *sp_file, char __user *buf, size_t size, loff_t *offset)
-{
-  int i;
-  read_p = !read_p;
-  if(read_p)
-    return 0;
-  //temp 
+    //temp 
   char * temp = kmalloc(sizeof(char) * 100, __GFP_RECLAIM | __GFP_IO | __GFP_FS);
 
   if(elevator.state == OFFLINE)
@@ -501,6 +494,7 @@ static ssize_t elevator_proc_read(struct file *sp_file, char __user *buf, size_t
   strcat(message, temp);
   //print passengers on each floor
 
+  int i;
   for (i = 9; i >= 0; i--)
   {
     char indicator = ' ' ;
@@ -531,10 +525,18 @@ static ssize_t elevator_proc_read(struct file *sp_file, char __user *buf, size_t
 
   }
   kfree(temp);
+  return 0;
+}
+
+static ssize_t elevator_proc_read(struct file *sp_file, char __user *buf, size_t size, loff_t *offset)
+{
+  read_p = !read_p;
+  if(read_p)
+    return 0;
+
 
   int len = strlen(message); 
   copy_to_user(buf, message, len);
-  memset(buf, 0, 1000);
   return 0;
 }
 //free message if proc is removed 
@@ -546,7 +548,7 @@ int elevator_proc_release(struct inode *sp_inode, struct file *sp_file)
 
 static int elevator_init(void)
 {
-  printk(KERN_NOTICE "/proc/%s create\n", ENTRY_NAME);
+  printk(KERN_INFO "/proc/%s create\n", ENTRY_NAME);
 
 	STUB_start_elevator = start_elevator;
 	STUB_stop_elevator = stop_elevator;
@@ -566,19 +568,20 @@ static int elevator_init(void)
   //start thread
 	thread_init_parameter(&thread1);
 	if (IS_ERR(thread1.kthread)) 
-  {
+    {
 		printk(KERN_WARNING "error spawning thread");
 		remove_proc_entry(ENTRY_NAME, NULL);
 		return PTR_ERR(thread1.kthread);
 	}	
-  elevator.load = 0;
-	elevator.current_floor = 0;
-	elevator.next_floor =  0;
-	elevator.state = OFFLINE;
+    elevator.load = 0;
+    elevator.current_floor = 0;
+    elevator.next_floor =  0;
+    elevator.state = OFFLINE;
 
 	INIT_LIST_HEAD(&elevator.onboard);
-  int i;
-	for(i = 0; i < 10; i++){
+    int i;
+	for(i = 0; i < 10; i++)
+    {
 		INIT_LIST_HEAD(&floors[i]);
 	}
 	return 0;
