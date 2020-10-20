@@ -17,6 +17,4 @@ Add 7 more system calls.
 * remove module using `sudo rmmod elevator`
 
 ### Known Bugs
-* When loading a passenger, the passenge's start floor and destination floor change to a huge number, but passenger type stays the same. 
-* Cannot unload passenger due to previous error.
-* When sending multiple request, deadlock might occur. 
+* No bug is found so far. 
