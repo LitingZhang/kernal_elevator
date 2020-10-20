@@ -42,20 +42,20 @@ int scheduler(void *data);
 int print_who_on_it(void);
 int print_passengers(void);
 
-// Struct for elevator status (for proc file use)
+// Struct for elevator
 typedef struct elevator_status
 {
     int state; // 0 = offline, 1 = idle, 2 = loading, 3 = up, 4 = down
     int current_floor;
     int next_floor;
-    int loads;
+    int loads;//num of passengers onboard
     int deactiving;
     int started;
     int status; //0 uninfected, 1 infected
     struct list_head onboard;
 } Elevator;
 
-// Struct representing a passenger
+// Struct passenger
 typedef struct passenger_data
 {
     int type;
@@ -64,7 +64,7 @@ typedef struct passenger_data
     struct list_head list;
 } Passenger;
 
-// Struct for storing thread data
+// Struct for  thread data
 typedef struct thread_parameter
 {
     int id;
@@ -90,7 +90,7 @@ extern long (*STUB_stop_elevator)(void);
 
 /***********************************************************/
 
-// System Call To Start Elevator
+// System Call Start Elevator
 long start_elevator(void)
 {
     printk(KERN_INFO "STARTED ELEVATOR: CALLED\n");
@@ -104,7 +104,7 @@ long start_elevator(void)
     return 0;
 }
 
-// System Call To Issue Request
+// System Call Issue Request
 long issue_request(int start_floor, int destination_floor, int type)
 {
     // Error Checking
@@ -125,7 +125,7 @@ long issue_request(int start_floor, int destination_floor, int type)
     {
         return 1;
     }
-    // Add passenger to waiting list
+    // Add passengers to waiting list
     if (mutex_lock_interruptible(&thread1.mutex) == 0)
     {
         //printk(KERN_INFO "ISSUE REQUEST: GAINED LOCK\n");
@@ -170,7 +170,7 @@ int print_passengers(void)
     return 0;
 }
 
-// System Call To Stop Elevator
+// System Call Stop Elevator
 long stop_elevator(void)
 {
     printk(KERN_INFO "STOP ELEVATOR: CALLED");
@@ -209,13 +209,9 @@ long stop_elevator(void)
     return 0;
 }
 
-/*
-	Remove passengers from elevator if destination is current floor
-*/
-
+//unload passengers
 int unloadPassengers(void)
 {
-    // List variables
     printk(KERN_INFO "UNLOAD_ELEVATOR: CALLED\n");
     //printk("CURRENT FLOOR IS %d\n", elevator.current_floor);
 
@@ -225,7 +221,7 @@ int unloadPassengers(void)
     Passenger *p;
     int unloaded = 0;
 
-    // Initialize delete list
+    //Initialize delete list
     INIT_LIST_HEAD(&delete_list);
 
     //unload passengers
@@ -261,6 +257,7 @@ int unloadPassengers(void)
     return unloaded;
 }
 
+//load passengers
 int loadPassengers(void)
 {
     printk(KERN_INFO "LOAD_ELEVATOR: CALLED\n");
@@ -318,7 +315,7 @@ int print_who_on_it(void)
     struct list_head *dummy;
     Passenger *p;
 
-    printk(KERN_INFO "printing whose on it\n");
+    printk(KERN_INFO "printing people on elevator\n");
 
     list_for_each_safe(temp, dummy, &elevator.onboard)
     {
@@ -368,28 +365,27 @@ int scheduler(void *data)
     while (!kthread_should_stop())
     {
         printk(KERN_INFO "SCHEDULER: CALLED\n");
-        // If people are waiting or on the elevator
-        // load and unload passengers, then move the elevator
+        // unload/load passenger and move elevator
         if (num_waiting != 0 || !list_empty(&elevator.onboard))
         {
-            // variables for determining whether to pause for loading
-            int unload_pause = 0;
-            int load_pause = 0;
+            // indicator for loading sleep
+            int unload_sleep = 0;
+            int load_sleep = 0;
 
             // unload and load passengers
-            unload_pause = unloadPassengers();
+            unload_sleep = unloadPassengers();
             if (elevator.loads < CAPACITY)
             {
-                load_pause = loadPassengers();
+                load_sleep = loadPassengers();
             }
-            // pause for loading if passengers got on or off
-            if (unload_pause || load_pause)
+            // sleep for loading 
+            if (unload_sleep || load_sleep)
             {
                 elevator.state = LOADING;
                 ssleep(LOAD_TIME);
             }
 
-            // Only move elevator if there are more passengers
+            //Move elevator if there are passengers
             if (elevator.loads != 0 || num_waiting != 0)
             {
                 changeElevatorState();
@@ -397,7 +393,7 @@ int scheduler(void *data)
                 moveElevator();
             }
             else if (elevator.deactiving)
-            {
+            {//if deactiving, change state to offline
                 elevator.state = 0;
                 elevator.deactiving = 0;
             }
@@ -405,12 +401,12 @@ int scheduler(void *data)
         else if (elevator.started) //change state to idle if no more passengers
         {
             elevator.state = IDLE;
-            ssleep(DEFAULT_SLEEP_TIME); // prevents busy-waiting
+            ssleep(DEFAULT_SLEEP_TIME); // prevents busy waiting
         }
         else //change to offline if elevator is not started and no more passegers
         {
             elevator.state = OFFLINE;
-            ssleep(DEFAULT_SLEEP_TIME); // prevents busy-waiting
+            ssleep(DEFAULT_SLEEP_TIME); // prevents busy waiting
         }
     }
     return 0;
@@ -596,7 +592,6 @@ module_init(elevator_init);
 //remove all passengers
 void removeAllPassengers(void)
 {
-    // List variables
     struct list_head *temp;
     struct list_head *dummy;
     struct list_head delete_list;
@@ -604,7 +599,7 @@ void removeAllPassengers(void)
     // Initalize Delete List
     INIT_LIST_HEAD(&delete_list);
     int i;
-    // Add waiting and elevator passengers to delete list
+    // Add all passengers to delete list
     if (mutex_lock_interruptible(&thread1.mutex) == 0)
     {
         list_for_each_safe(temp, dummy, &elevator.onboard)
